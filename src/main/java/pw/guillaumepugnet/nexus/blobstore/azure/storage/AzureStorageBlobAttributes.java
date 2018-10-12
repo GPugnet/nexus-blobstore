@@ -10,7 +10,13 @@
  * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
  * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
-package org.sonatype.nexus.blobstore.s3.internal;
+package pw.guillaumepugnet.nexus.blobstore.azure.storage;
+
+import com.microsoft.azure.storage.blob.CloudBlobContainer;
+import org.joda.time.DateTime;
+import org.sonatype.nexus.blobstore.api.BlobAttributes;
+import org.sonatype.nexus.blobstore.api.BlobMetrics;
+
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -18,24 +24,13 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Properties;
 
-import org.sonatype.nexus.blobstore.api.BlobAttributes;
-import org.sonatype.nexus.blobstore.api.BlobMetrics;
-
-import com.amazonaws.services.s3.AmazonS3;
-import org.joda.time.DateTime;
-
 import static com.google.common.base.Preconditions.checkNotNull;
-import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.CONTENT_SIZE_ATTRIBUTE;
-import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.CREATION_TIME_ATTRIBUTE;
-import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.DELETED_ATTRIBUTE;
-import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.DELETED_REASON_ATTRIBUTE;
-import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.HEADER_PREFIX;
-import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.SHA1_HASH_ATTRIBUTE;
+import static org.sonatype.nexus.blobstore.api.BlobAttributesConstants.*;
 
 /**
  * A data holder for the content of each blob's .attribs.
  */
-public class S3BlobAttributes implements BlobAttributes
+public class AzureStorageBlobAttributes implements BlobAttributes
 {
   private Map<String, String> headers;
 
@@ -45,17 +40,17 @@ public class S3BlobAttributes implements BlobAttributes
 
   private String deletedReason;
 
-  private final S3PropertiesFile propertiesFile;
+  private final AzureStoragePropertiesFile propertiesFile;
 
-  public S3BlobAttributes(final AmazonS3 s3, final String bucket, final String key) {
+  public AzureStorageBlobAttributes(final CloudBlobContainer container, final String key) {
     checkNotNull(key);
-    checkNotNull(s3);
-    this.propertiesFile = new S3PropertiesFile(s3, bucket, key);
+    checkNotNull(container);
+    this.propertiesFile = new AzureStoragePropertiesFile(container, key);
   }
 
-  public S3BlobAttributes(final AmazonS3 s3, final String bucket, final String key, final Map<String, String> headers,
-                          final BlobMetrics metrics) {
-    this(s3, bucket, key);
+  public AzureStorageBlobAttributes(final CloudBlobContainer container, final String key, final Map<String, String> headers,
+                                    final BlobMetrics metrics) {
+    this(container, key);
     this.headers = checkNotNull(headers);
     this.metrics = checkNotNull(metrics);
   }

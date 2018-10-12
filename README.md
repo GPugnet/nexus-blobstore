@@ -15,8 +15,6 @@
 Nexus Repository Azure Storage Blobstores
 ==============================
 
-[![Join the chat at https://gitter.im/sonatype/nexus-developers](https://badges.gitter.im/sonatype/nexus-developers.svg)](https://gitter.im/sonatype/nexus-developers?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-
 This project adds Azure Storage backed blobstores to Sonatype Nexus Repository 3.  It allows
 Nexus Repository to store the components and assets in Azure Blob Storage instead of a
 local filesystem.

@@ -10,25 +10,28 @@
  * of Sonatype, Inc. Apache Maven is a trademark of the Apache Software Foundation. M2eclipse is a trademark of the
  * Eclipse Foundation. All other trademarks are the property of their respective owners.
  */
-package org.sonatype.nexus.blobstore.s3.internal;
+package pw.guillaumepugnet.nexus.blobstore.azure.storage;
 
-import java.io.IOException;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Stream;
-
-import javax.inject.Inject;
-import javax.inject.Named;
-
+import com.microsoft.azure.storage.blob.CloudBlob;
+import com.microsoft.azure.storage.blob.CloudBlobContainer;
+import com.microsoft.azure.storage.blob.CloudBlockBlob;
+import com.microsoft.azure.storage.blob.ListBlobItem;
 import org.sonatype.nexus.blobstore.AccumulatingBlobStoreMetrics;
-import org.sonatype.nexus.blobstore.api.BlobStoreMetrics;
 import org.sonatype.nexus.blobstore.PeriodicJobService;
 import org.sonatype.nexus.blobstore.PeriodicJobService.PeriodicJob;
+import org.sonatype.nexus.blobstore.api.BlobStoreMetrics;
+
 import org.sonatype.nexus.common.node.NodeAccess;
 import org.sonatype.nexus.common.stateguard.Guarded;
 import org.sonatype.nexus.common.stateguard.StateGuardLifecycleSupport;
 
-import com.amazonaws.services.s3.AmazonS3;
+import javax.inject.Inject;
+import javax.inject.Named;
+import java.io.IOException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -37,10 +40,10 @@ import static org.sonatype.nexus.common.stateguard.StateGuardLifecycleSupport.St
 
 /**
  * A {@link BlobStoreMetricsStore} implementation that retains blobstore metrics in memory, periodically
- * writing them out to AWS S3.
+ * writing them out to Azure Storage.
  */
 @Named
-public class S3BlobStoreMetricsStore
+public class AzureStorageBlobStoreMetricsStore
     extends StateGuardLifecycleSupport
 {
   private static final String METRICS_SUFFIX = "-metrics";
@@ -65,16 +68,16 @@ public class S3BlobStoreMetricsStore
 
   private PeriodicJob metricsWritingJob;
 
-  private String bucket;
+  private AzureStoragePropertiesFile propertiesFile;
 
-  private S3PropertiesFile propertiesFile;
+  private final CloudBlobContainer container;
 
-  private AmazonS3 s3;
-
-  @Inject
-  public S3BlobStoreMetricsStore(final PeriodicJobService jobService, final NodeAccess nodeAccess) {
+  public AzureStorageBlobStoreMetricsStore(final PeriodicJobService jobService,
+                                            final NodeAccess nodeAccess,
+                                           final CloudBlobContainer container) {
     this.jobService = checkNotNull(jobService);
     this.nodeAccess = checkNotNull(nodeAccess);
+    this.container = checkNotNull(container);
   }
 
   @Override
@@ -83,7 +86,7 @@ public class S3BlobStoreMetricsStore
     totalSize = new AtomicLong();
     dirty = new AtomicBoolean();
 
-    propertiesFile = new S3PropertiesFile(s3, bucket, nodeAccess.getId() + METRICS_SUFFIX + METRICS_EXTENSION);
+    propertiesFile = new AzureStoragePropertiesFile (container, nodeAccess.getId() + METRICS_SUFFIX + METRICS_EXTENSION);
     if (propertiesFile.exists()) {
       log.info("Loading blob store metrics file {}", propertiesFile);
       propertiesFile.load();
@@ -124,25 +127,13 @@ public class S3BlobStoreMetricsStore
     propertiesFile = null;
   }
 
-  public void setBucket(final String bucket) {
-    checkState(this.bucket == null, "Do not initialize twice");
-    checkNotNull(bucket);
-    this.bucket = bucket;
-  }
-
-  public void setS3(final AmazonS3 s3) {
-    checkState(this.s3 == null, "Do not initialize twice");
-    checkNotNull(s3);
-    this.s3 = s3;
-  }
-
   @Guarded(by = STARTED)
   public BlobStoreMetrics getMetrics() {
-    Stream<S3PropertiesFile> blobStoreMetricsFiles = backingFiles();
+    Stream<AzureStoragePropertiesFile> blobStoreMetricsFiles = backingFiles();
     return getCombinedMetrics(blobStoreMetricsFiles);
   }
 
-  private BlobStoreMetrics getCombinedMetrics(final Stream<S3PropertiesFile> blobStoreMetricsFiles) {
+  private BlobStoreMetrics getCombinedMetrics(final Stream<AzureStoragePropertiesFile> blobStoreMetricsFiles) {
     AccumulatingBlobStoreMetrics blobStoreMetrics = new AccumulatingBlobStoreMetrics(0, 0, -1, true);
 
     blobStoreMetricsFiles.forEach(metricsFile -> {
@@ -172,25 +163,15 @@ public class S3BlobStoreMetricsStore
   }
 
   public void remove() {
-    backingFiles().forEach(metricsFile -> {
-        try {
-          metricsFile.remove();
-        }
-        catch (IOException e) {
-          throw new RuntimeException(e);
-        }
-    });
+    backingFiles().forEach(metricsFile -> metricsFile.remove());
   }
 
-  private Stream<S3PropertiesFile> backingFiles() {
-    if (s3 == null) {
-      return Stream.empty();
-    } else {
-      Stream<S3PropertiesFile> stream = s3.listObjects(bucket, nodeAccess.getId()).getObjectSummaries().stream()
-          .filter(summary -> summary.getKey().endsWith(METRICS_EXTENSION))
-          .map(summary -> new S3PropertiesFile(s3, bucket, summary.getKey()));
+  private Stream<AzureStoragePropertiesFile> backingFiles() {
+     Stream<AzureStoragePropertiesFile> stream = StreamSupport.stream(container.listBlobs(nodeAccess.getId(),true).spliterator(), false)
+              .filter(item -> ((CloudBlockBlob)item).getName().endsWith(METRICS_EXTENSION))
+              .map(item -> new AzureStoragePropertiesFile(container,((CloudBlockBlob)item).getName()  ));
+
       return stream;
-    }
   }
 
   private void updateProperties() {
